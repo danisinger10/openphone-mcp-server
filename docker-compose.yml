@@ -1,0 +1,25 @@
+version: '3.8'
+
+services:
+  openphone-mcp-server:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - OPENPHONE_API_KEY=${OPENPHONE_API_KEY}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    volumes:
+      - ./logs:/app/logs
+    networks:
+      - openphone-network
+
+networks:
+  openphone-network:
+    driver: bridge

@@ -1,0 +1,31 @@
+{
+  "name": "openphone-mcp-server",
+  "version": "1.0.0",
+  "description": "MCP server for OpenPhone API integration with ChatGPT",
+  "main": "mcp-server.js",
+  "scripts": {
+    "start": "node mcp-server.js",
+    "dev": "nodemon mcp-server.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "openphone",
+    "mcp",
+    "chatgpt",
+    "api",
+    "integration"
+  ],
+  "author": "OpenPhone API Integration",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "axios": "^1.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
