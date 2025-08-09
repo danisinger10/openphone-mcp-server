@@ -61,7 +61,192 @@ app.get('/mcp/info', (req, res) => {
     res.json(SERVER_INFO);
 });
 
-// Search endpoint (required by MCP)
+// MCP Protocol - Initialize connection
+app.post('/mcp/initialize', (req, res) => {
+    res.json({
+        protocolVersion: "2024-11-05",
+        capabilities: {
+            tools: {},
+            resources: {}
+        },
+        serverInfo: {
+            name: "openphone-mcp-server",
+            version: "1.0.0"
+        }
+    });
+});
+
+// MCP Protocol - List tools (required by ChatGPT Pro)
+app.post('/mcp/tools/list', (req, res) => {
+    res.json({
+        tools: [
+            {
+                name: "search",
+                description: "Search across OpenPhone messages, contacts, and calls. Use this to find communication history, contact information, or call records. Query can be a person's name, phone number, message content, or any search term.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        query: {
+                            type: "string",
+                            description: "Search query - can be name, phone number, message content, or any search term"
+                        }
+                    },
+                    required: ["query"]
+                }
+            },
+            {
+                name: "fetch",
+                description: "Fetch detailed information about a specific OpenPhone resource by ID. Use this after search to get full details about messages, contacts, or calls.",
+                inputSchema: {
+                    type: "object",
+                    properties: {
+                        id: {
+                            type: "string",
+                            description: "Resource ID returned from search results"
+                        }
+                    },
+                    required: ["id"]
+                }
+            }
+        ]
+    });
+});
+
+// MCP Protocol - Call tool (handles both search and fetch)
+app.post('/mcp/tools/call', async (req, res) => {
+    try {
+        const { name, arguments: toolArgs } = req.body;
+        
+        if (name === "search") {
+            const { query } = toolArgs;
+            // Search logic (same as before but return MCP format)
+            const searchResults = [];
+            
+            // Search messages
+            try {
+                const messagesResponse = await openPhoneClient.get('/messages', {
+                    params: { search: query, limit: 10 }
+                });
+                
+                messagesResponse.data.data?.forEach(message => {
+                    searchResults.push({
+                        id: `message_${message.id}`,
+                        title: `Message from ${message.from}`,
+                        snippet: message.body?.substring(0, 100) + (message.body?.length > 100 ? '...' : ''),
+                        type: "message"
+                    });
+                });
+            } catch (error) {
+                console.warn('Failed to search messages:', error.message);
+            }
+            
+            // Search contacts
+            try {
+                const contactsResponse = await openPhoneClient.get('/contacts', {
+                    params: { search: query, limit: 10 }
+                });
+                
+                contactsResponse.data.data?.forEach(contact => {
+                    searchResults.push({
+                        id: `contact_${contact.id}`,
+                        title: contact.name || contact.phoneNumber,
+                        snippet: `Contact: ${contact.name || 'Unknown'} - ${contact.phoneNumber}`,
+                        type: "contact"
+                    });
+                });
+            } catch (error) {
+                console.warn('Failed to search contacts:', error.message);
+            }
+            
+            // Search calls
+            try {
+                const callsResponse = await openPhoneClient.get('/calls', {
+                    params: { limit: 10 }
+                });
+                
+                callsResponse.data.data?.forEach(call => {
+                    if (call.participants?.some(p => p.toLowerCase().includes(query.toLowerCase()))) {
+                        searchResults.push({
+                            id: `call_${call.id}`,
+                            title: `${call.direction} call - ${call.duration}s`,
+                            snippet: `Call log: ${call.direction} call lasting ${call.duration} seconds`,
+                            type: "call"
+                        });
+                    }
+                });
+            } catch (error) {
+                console.warn('Failed to search calls:', error.message);
+            }
+            
+            return res.json({
+                content: [
+                    {
+                        type: "text",
+                        text: JSON.stringify(searchResults, null, 2)
+                    }
+                ]
+            });
+            
+        } else if (name === "fetch") {
+            const { id } = toolArgs;
+            const [type, resourceId] = id.split('_');
+            
+            let data;
+            
+            try {
+                switch (type) {
+                    case 'message':
+                        const messageResponse = await openPhoneClient.get(`/messages/${resourceId}`);
+                        data = messageResponse.data;
+                        break;
+                        
+                    case 'contact':
+                        const contactResponse = await openPhoneClient.get(`/contacts/${resourceId}`);
+                        data = contactResponse.data;
+                        break;
+                        
+                    case 'call':
+                        const callResponse = await openPhoneClient.get(`/calls/${resourceId}`);
+                        data = callResponse.data;
+                        break;
+                        
+                    default:
+                        throw new Error(`Unknown resource type: ${type}`);
+                }
+                
+                return res.json({
+                    content: [
+                        {
+                            type: "text",
+                            text: JSON.stringify(data, null, 2)
+                        }
+                    ]
+                });
+                
+            } catch (error) {
+                return res.json({
+                    content: [
+                        {
+                            type: "text",
+                            text: `Error fetching ${type} ${resourceId}: ${error.message}`
+                        }
+                    ]
+                });
+            }
+        }
+        
+        res.status(400).json({ error: `Unknown tool: ${name}` });
+        
+    } catch (error) {
+        console.error('Tool call error:', error);
+        res.status(500).json({
+            error: 'Tool call failed',
+            message: error.message
+        });
+    }
+});
+
+// Legacy search endpoint (keeping for compatibility)
 app.post('/mcp/search', async (req, res) => {
     try {
         const { query, limit = 10 } = req.body;
